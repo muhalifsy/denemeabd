@@ -11,18 +11,18 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./style.css" />
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script type="module" src="./app.js"></script>
   </head>
   <body>
     <div class="page-shell">
-      <header class="hero">
+      <header class="hero hero-compact">
         <div class="hero-copy">
           <p class="eyebrow">Northstar Portfolio</p>
           <h1>ABD hisselerini tek panelde takip et.</h1>
           <p class="lead">
-            Excel dosyani yukle, pozisyonlarini otomatik hesapla, sonra yeni
-            islemler ekleyip fiyatlari tek tusla guncelle.
+            Excelinden aldigim islem gecmisi yuklu. Yeni alis ve satislari
+            ekleyebilir, ister son islem fiyatina ister canli fiyata gore
+            pozisyonlarini gorebilirsin.
           </p>
           <div class="hero-actions">
             <button id="seed-image-data-button" class="primary">
@@ -31,34 +31,16 @@
             <button id="reset-data-button" class="ghost">Temiz Basla</button>
           </div>
         </div>
-
-        <aside class="hero-aside">
-          <div class="mini-card">
-            <span>Baslangic verisi</span>
-            <strong>Senin Excel kayitlarin yuklu</strong>
-            <p>
-              Daha once girdigin islemler dogrudan uygulamaya yerlestirildi.
-            </p>
-          </div>
-          <div class="mini-card">
-            <span>Yeni sutun</span>
-            <strong>Satman gereken adet</strong>
-            <p>
-              Son fiyata gore maliyet ve masrafi cikarmak icin kac adet
-              satman gerektigini gosterir.
-            </p>
-          </div>
-        </aside>
       </header>
 
-      <main class="grid">
+      <main class="grid compact-grid">
         <section class="panel add-panel">
           <div class="panel-head">
             <div>
               <p class="section-kicker">Yeni Islem</p>
-              <h2>Islem ekle</h2>
+              <h2>Alis veya satis ekle</h2>
             </div>
-            <span class="pill">Elle duzeltilebilir</span>
+            <span class="pill">Tarihe gore siralanir</span>
           </div>
 
           <form id="transaction-form" class="form-grid">
@@ -143,10 +125,10 @@
           </form>
         </section>
 
-        <section class="panel controls-panel">
+        <section class="panel controls-panel controls-compact">
           <div class="panel-head">
             <div>
-              <p class="section-kicker">Veri</p>
+              <p class="section-kicker">Ayarlar</p>
               <h2>Fiyat baglantisi</h2>
             </div>
           </div>
@@ -172,71 +154,48 @@
             />
           </label>
 
-          <div class="button-row">
-            <button id="refresh-prices-button" class="primary">Update</button>
-          </div>
-
           <p class="hint">
-            Son fiyat gelmezse hesaplar son islem fiyatina gore de gorunur.
+            Update yapmadiginda hesaplar son islem fiyatina gore gorunur.
           </p>
         </section>
       </main>
 
       <section class="panel status-panel">
         <div id="status-message" class="status-message info">
-          Excel dosyani yukleyebilir veya yeni islem ekleyebilirsin.
+          Baslangic verilerin yuklu. Yeni islem ekleyebilir veya fiyatlari
+          guncelleyebilirsin.
         </div>
       </section>
 
-      <section class="stats-grid" id="stats"></section>
-
-      <section class="grid lower-grid">
-        <section class="panel positions-panel">
-          <div class="panel-head">
-            <div>
-              <p class="section-kicker">Portfoy</p>
-              <h2>Acik pozisyonlar</h2>
-            </div>
+      <section class="panel positions-panel">
+        <div class="panel-head panel-head-stacked">
+          <div>
+            <p class="section-kicker">Mevcut Hisseler</p>
+            <h2>Acik lotlar</h2>
           </div>
-
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Sembol</th>
-                  <th>Kalan Adet</th>
-                  <th>Ort. Maliyet</th>
-                  <th>Acik Pozisyon Maliyeti</th>
-                  <th>Toplam Masraf</th>
-                  <th>Referans Fiyat</th>
-                  <th>Guncel Deger</th>
-                  <th>Gerceklesmemis K/Z</th>
-                  <th>Masrafi Cikarmak Icin Satilacak Adet</th>
-                  <th>Kalan Bedava Adet</th>
-                </tr>
-              </thead>
-              <tbody id="positions-body">
-                <tr>
-                  <td colspan="10" class="empty-state">Henuz veri yok.</td>
-                </tr>
-              </tbody>
-            </table>
+          <div class="positions-toolbar">
+            <div id="positions-summary" class="summary-inline"></div>
+            <button id="refresh-prices-button" class="primary">Update</button>
           </div>
-        </section>
+        </div>
 
-        <section class="panel ledger-panel">
-          <div class="panel-head">
-            <div>
-              <p class="section-kicker">Islem Defteri</p>
-              <h2>Son islemler</h2>
-            </div>
-            <span class="pill" id="transaction-count-pill">0 islem</span>
-          </div>
+        <div id="positions-list" class="positions-list">
+          <div class="empty-card">Henuz veri yok.</div>
+        </div>
+      </section>
 
-          <div class="ledger-list" id="ledger-list">
-            <div class="empty-card">Henuz islem kaydi yok.</div>
+      <section class="panel ledger-panel">
+        <div class="panel-head">
+          <div>
+            <p class="section-kicker">Islem Defteri</p>
+            <h2>Islemler</h2>
           </div>
-        </section>
+          <span class="pill" id="transaction-count-pill">0 islem</span>
+        </div>
+
+        <div class="ledger-list" id="ledger-list">
+          <div class="empty-card">Henuz islem kaydi yok.</div>
+        </div>
       </section>
     </div>
   </body>

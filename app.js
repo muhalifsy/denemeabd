@@ -1,4 +1,4 @@
-const STORAGE_KEY = "northstar-portfolio-state-v4";
+const STORAGE_KEY = "northstar-portfolio-state-v5";
 
 const seedTransactions = [
   { symbol: "TLT", date: "2023-11-02", pcs: 58, price: 86.5, amount: 5017, fee: 1.5, total: 5018.5, note: "", tax: null },
@@ -49,8 +49,8 @@ const elements = {
   taxRateInput: document.getElementById("tax-rate-input"),
   refreshPricesButton: document.getElementById("refresh-prices-button"),
   statusMessage: document.getElementById("status-message"),
-  stats: document.getElementById("stats"),
-  positionsBody: document.getElementById("positions-body"),
+  positionsList: document.getElementById("positions-list"),
+  positionsSummary: document.getElementById("positions-summary"),
   ledgerList: document.getElementById("ledger-list"),
   transactionCountPill: document.getElementById("transaction-count-pill"),
   transactionForm: document.getElementById("transaction-form"),
@@ -67,9 +67,9 @@ const elements = {
 
 const state = {
   transactions: [],
-  positions: [],
-  pricesBySymbol: new Map(),
+  openLots: [],
   historicalPriceCache: new Map(),
+  pricesBySymbol: new Map(),
 };
 
 hydrateState();
@@ -78,21 +78,21 @@ if (!state.transactions.length) {
   persistState();
 }
 bindEvents();
-rebuildPositions();
+rebuildPortfolio();
 
 function bindEvents() {
   elements.seedImageDataButton.addEventListener("click", () => {
     state.transactions = structuredClone(seedTransactions);
     persistState();
-    rebuildPositions();
-    setStatus("Excelinden aldigim baslangic verileri geri yüklendi.");
+    rebuildPortfolio();
+    setStatus("Excelinden aldigim baslangic verileri geri yuklendi.");
   });
 
   elements.resetDataButton.addEventListener("click", () => {
     state.transactions = [];
     state.pricesBySymbol = new Map();
     persistState();
-    rebuildPositions();
+    rebuildPortfolio();
     setStatus("Tum yerel veriler temizlendi.");
   });
 
@@ -102,7 +102,7 @@ function bindEvents() {
   elements.apiKeyInput.addEventListener("input", persistState);
   elements.taxRateInput.addEventListener("input", () => {
     persistState();
-    rebuildPositions();
+    rebuildPortfolio();
   });
   elements.priceInput.addEventListener("input", syncAmountField);
   elements.sharesInput.addEventListener("input", syncAmountField);
@@ -134,6 +134,7 @@ function persistState() {
 
 async function handleTransactionSubmit(event) {
   event.preventDefault();
+
   const symbol = elements.symbolInput.value.trim().toUpperCase();
   const side = elements.sideInput.value;
   const date = elements.dateInput.value;
@@ -147,6 +148,7 @@ async function handleTransactionSubmit(event) {
     setStatus("Sembol, tarih ve adet alanlarini doldurman gerekiyor.", true);
     return;
   }
+
   if (!Number.isFinite(price) || price <= 0) {
     setStatus("Fiyat bilgisi gerekli.", true);
     return;
@@ -170,7 +172,7 @@ async function handleTransactionSubmit(event) {
   });
 
   persistState();
-  rebuildPositions();
+  rebuildPortfolio();
   elements.transactionForm.reset();
   elements.feeInput.value = "1.5";
   setStatus(`${symbol} icin yeni islem eklendi.`);
@@ -180,14 +182,17 @@ async function autofillTransactionFields() {
   const apiKey = elements.apiKeyInput.value.trim();
   const symbol = elements.symbolInput.value.trim().toUpperCase();
   const date = elements.dateInput.value;
+
   if (!symbol || !date) {
     setStatus("Otomatik doldurma icin once sembol ve tarih gir.", true);
     return;
   }
+
   if (!apiKey) {
     setStatus("Tarihsel fiyat almak icin Twelve Data API key gerekli.", true);
     return;
   }
+
   try {
     setStatus(`${symbol} icin ${formatDate(date)} fiyat getiriliyor...`);
     elements.autofillButton.disabled = true;
@@ -204,35 +209,46 @@ async function autofillTransactionFields() {
 
 async function refreshPrices() {
   const apiKey = elements.apiKeyInput.value.trim();
-  const symbols = [...new Set(state.positions.map((position) => position.symbol))];
+  const symbols = [...new Set(state.openLots.map((lot) => lot.symbol))];
+
   if (!symbols.length) {
     setStatus("Once veri olusmali.", true);
     return;
   }
+
   if (!apiKey) {
     setStatus("Guncel fiyat icin Twelve Data API key gerekli.", true);
     return;
   }
+
   try {
     setStatus("Guncel fiyatlar cekiliyor...");
     elements.refreshPricesButton.disabled = true;
+
     const results = await Promise.all(
       symbols.map(async (symbol) => {
         const url = new URL("https://api.twelvedata.com/quote");
         url.searchParams.set("symbol", symbol);
         url.searchParams.set("interval", "1day");
         url.searchParams.set("apikey", apiKey);
+
         const response = await fetch(url.toString());
         if (!response.ok) throw new Error(`${symbol} icin servis cevap vermedi.`);
+
         const payload = await response.json();
-        if (payload.status === "error") throw new Error(`${symbol}: ${payload.message || "fiyat alinamadi"}`);
+        if (payload.status === "error") {
+          throw new Error(`${symbol}: ${payload.message || "fiyat alinamadi"}`);
+        }
+
         const price = Number(payload.close ?? payload.price ?? payload.previous_close);
         if (!Number.isFinite(price)) throw new Error(`${symbol} icin fiyat okunamadi.`);
+
         return [symbol, price];
       }),
     );
+
     state.pricesBySymbol = new Map(results);
-    rebuildPositions();
+    rebuildPortfolio();
     setStatus(`Guncel fiyatlar alindi. ${results.length} sembol guncellendi.`);
   } catch (error) {
     setStatus(error.message || "Guncel fiyatlar alinamadi.", true);
@@ -243,145 +259,210 @@ async function refreshPrices() {
 
 async function fetchHistoricalClose(symbol, date, apiKey) {
   const cacheKey = `${symbol}:${date}`;
-  if (state.historicalPriceCache.has(cacheKey)) return state.historicalPriceCache.get(cacheKey);
+  if (state.historicalPriceCache.has(cacheKey)) {
+    return state.historicalPriceCache.get(cacheKey);
+  }
+
   const url = new URL("https://api.twelvedata.com/time_series");
   url.searchParams.set("symbol", symbol);
   url.searchParams.set("interval", "1day");
   url.searchParams.set("date", date);
   url.searchParams.set("outputsize", "1");
   url.searchParams.set("apikey", apiKey);
+
   const response = await fetch(url.toString());
   if (!response.ok) throw new Error(`${symbol} icin tarihsel veri servisi cevap vermedi.`);
+
   const payload = await response.json();
-  if (payload.status === "error") throw new Error(`${symbol}: ${payload.message || "tarihsel veri bulunamadi"}`);
+  if (payload.status === "error") {
+    throw new Error(`${symbol}: ${payload.message || "tarihsel veri bulunamadi"}`);
+  }
+
   const record = Array.isArray(payload.values) ? payload.values[0] : null;
   const price = Number(record?.close ?? record?.price);
-  if (!Number.isFinite(price)) throw new Error(`${symbol} icin ${formatDate(date)} fiyat bulunamadi.`);
+  if (!Number.isFinite(price)) {
+    throw new Error(`${symbol} icin ${formatDate(date)} fiyat bulunamadi.`);
+  }
+
   state.historicalPriceCache.set(cacheKey, price);
   return price;
 }
 
-function rebuildPositions() {
-  state.positions = buildPositions(state.transactions, Number(elements.taxRateInput.value || 0));
-  renderStats();
+function rebuildPortfolio() {
+  state.openLots = buildOpenLots(state.transactions, Number(elements.taxRateInput.value || 0), state.pricesBySymbol);
+  renderPositionsSummary();
   renderPositions();
   renderLedger();
 }
 
-function buildPositions(rows, taxRatePercent) {
+function buildOpenLots(rows, taxRatePercent, pricesBySymbol) {
   const grouped = new Map();
+
   for (const row of rows) {
-    if (!grouped.has(row.symbol)) grouped.set(row.symbol, []);
+    if (!grouped.has(row.symbol)) {
+      grouped.set(row.symbol, []);
+    }
     grouped.get(row.symbol).push(row);
   }
 
-  const positions = [];
+  const openLots = [];
+
   for (const [symbol, symbolRows] of grouped.entries()) {
     const sortedRows = [...symbolRows].sort((a, b) => parseDate(a.date) - parseDate(b.date));
-    let remainingShares = 0;
-    let remainingCost = 0;
-    let totalFees = 0;
-    let referencePrice = null;
-    let estimatedSellFee = 0;
+    const lots = [];
+    let lastPrice = null;
+    let sellFeeEstimate = 1.5;
 
     for (const row of sortedRows) {
       const fee = Math.abs(Number(row.fee) || 0);
-      totalFees += fee;
-      referencePrice = Number(row.price) || referencePrice;
-      estimatedSellFee = Math.max(estimatedSellFee, fee);
+      lastPrice = Number(row.price) || lastPrice;
+      sellFeeEstimate = Math.max(sellFeeEstimate, fee || 0);
 
       if (row.pcs > 0) {
-        remainingShares += row.pcs;
-        remainingCost += row.pcs * row.price + fee;
-      } else if (row.pcs < 0 && remainingShares > 0) {
-        const sellShares = Math.min(Math.abs(row.pcs), remainingShares);
-        const averageCost = remainingCost / remainingShares;
-        const costRemoved = averageCost * sellShares;
-        remainingShares -= sellShares;
-        remainingCost -= costRemoved;
-        if (remainingShares <= 0.0000001) {
-          remainingShares = 0;
-          remainingCost = 0;
+        const shareCount = Number(row.pcs);
+        const cost = shareCount * Number(row.price) + fee;
+
+        lots.push({
+          symbol,
+          date: row.date,
+          note: row.note ?? "",
+          remainingShares: shareCount,
+          originalShares: shareCount,
+          remainingCost: cost,
+          buyFee: fee,
+          lotPrice: Number(row.price),
+          sellFeeEstimate,
+        });
+        continue;
+      }
+
+      if (row.pcs < 0) {
+        let sharesToSell = Math.abs(Number(row.pcs));
+
+        for (const lot of lots) {
+          if (sharesToSell <= 0) break;
+          if (lot.remainingShares <= 0) continue;
+
+          const consumedShares = Math.min(lot.remainingShares, sharesToSell);
+          const unitCost = lot.remainingCost / lot.remainingShares;
+          const costRemoved = unitCost * consumedShares;
+
+          lot.remainingShares -= consumedShares;
+          lot.remainingCost -= costRemoved;
+          sharesToSell -= consumedShares;
+
+          if (lot.remainingShares <= 0.0000001) {
+            lot.remainingShares = 0;
+            lot.remainingCost = 0;
+          }
         }
       }
     }
 
-    if (remainingShares <= 0) continue;
+    const livePrice = pricesBySymbol.get(symbol) ?? null;
 
-    const averageCost = remainingCost / remainingShares;
-    const livePrice = state.pricesBySymbol.get(symbol) ?? null;
-    const effectiveReferencePrice = livePrice ?? referencePrice;
-    const marketValue = effectiveReferencePrice != null ? remainingShares * effectiveReferencePrice : null;
-    const unrealizedPnl = effectiveReferencePrice != null ? marketValue - remainingCost : null;
-    const taxRate = taxRatePercent / 100;
-    const perShareTax = effectiveReferencePrice != null ? Math.max(effectiveReferencePrice - averageCost, 0) * taxRate : null;
-    const netSellPrice = effectiveReferencePrice != null ? Math.max(effectiveReferencePrice - (perShareTax ?? 0), 0) : null;
-    const breakEvenShares =
-      netSellPrice && netSellPrice > 0
-        ? Math.min(remainingShares, Math.ceil((remainingCost + estimatedSellFee) / netSellPrice))
-        : null;
+    for (const lot of lots) {
+      if (lot.remainingShares <= 0) continue;
 
-    positions.push({
-      symbol,
-      remainingShares,
-      averageCost,
-      remainingCost,
-      totalFees,
-      referencePrice: effectiveReferencePrice,
-      marketValue,
-      unrealizedPnl,
-      breakEvenShares,
-      freeSharesLeft: breakEvenShares != null ? Math.max(remainingShares - breakEvenShares, 0) : null,
-      priceMode: livePrice != null ? "canli" : "son-islem",
-    });
+      const averageCost = lot.remainingCost / lot.remainingShares;
+      const referencePrice = livePrice ?? lastPrice ?? lot.lotPrice;
+      const marketValue = referencePrice ? lot.remainingShares * referencePrice : null;
+      const unrealizedPnl = marketValue != null ? marketValue - lot.remainingCost : null;
+      const taxRate = taxRatePercent / 100;
+      const perShareTax =
+        referencePrice != null ? Math.max(referencePrice - averageCost, 0) * taxRate : null;
+      const netSellPrice =
+        referencePrice != null ? Math.max(referencePrice - (perShareTax ?? 0), 0) : null;
+      const breakEvenShares =
+        netSellPrice && netSellPrice > 0
+          ? Math.min(lot.remainingShares, Math.ceil((lot.remainingCost + lot.sellFeeEstimate) / netSellPrice))
+          : null;
+
+      openLots.push({
+        symbol: lot.symbol,
+        date: lot.date,
+        note: lot.note,
+        remainingShares: lot.remainingShares,
+        averageCost,
+        remainingCost: lot.remainingCost,
+        totalFees: lot.buyFee,
+        referencePrice,
+        marketValue,
+        unrealizedPnl,
+        breakEvenShares,
+        freeSharesLeft: breakEvenShares != null ? Math.max(lot.remainingShares - breakEvenShares, 0) : null,
+        priceMode: livePrice != null ? "canli" : "son-islem",
+      });
+    }
   }
 
-  return positions.sort((a, b) => b.remainingCost - a.remainingCost);
+  return openLots.sort((a, b) => parseDate(b.date) - parseDate(a.date));
 }
 
-function renderStats() {
-  const totalCost = state.positions.reduce((sum, item) => sum + item.remainingCost, 0);
-  const totalShares = state.positions.reduce((sum, item) => sum + item.remainingShares, 0);
-  const totalValue = state.positions.reduce((sum, item) => sum + (item.marketValue ?? 0), 0);
-  const totalPnL = state.positions.reduce((sum, item) => sum + (item.unrealizedPnl ?? 0), 0);
-  const cards = [
-    ["Aktif Pozisyon", String(state.positions.length)],
-    ["Toplam Islem", String(state.transactions.length)],
-    ["Toplam Adet", formatNumber(totalShares)],
-    ["Acik Pozisyon Maliyeti", formatCurrency(totalCost)],
-    ["Referans Deger", totalValue ? formatCurrency(totalValue) : "-"],
-    ["Gerceklesmemis K/Z", totalValue ? formatCurrency(totalPnL) : "-"],
-    ["En Buyuk Pozisyon", state.positions[0]?.symbol ?? "-"],
-    ["Takip Edilen Sembol", String(new Set(state.transactions.map((item) => item.symbol)).size)],
-  ];
-  elements.stats.innerHTML = cards.map(([label, value]) => `<article><span>${label}</span><strong>${value}</strong></article>`).join("");
+function renderPositionsSummary() {
+  const totalLots = state.openLots.length;
+  const totalShares = state.openLots.reduce((sum, lot) => sum + lot.remainingShares, 0);
+  const totalCost = state.openLots.reduce((sum, lot) => sum + lot.remainingCost, 0);
+  const totalValue = state.openLots.reduce((sum, lot) => sum + (lot.marketValue ?? 0), 0);
+
+  elements.positionsSummary.innerHTML = `
+    <span class="summary-chip">${totalLots} lot</span>
+    <span class="summary-chip">${formatNumber(totalShares)} adet</span>
+    <span class="summary-chip">${formatCurrency(totalCost)} maliyet</span>
+    <span class="summary-chip">${totalValue ? formatCurrency(totalValue) : "deger bekliyor"}</span>
+  `;
 }
 
 function renderPositions() {
-  if (!state.positions.length) {
-    elements.positionsBody.innerHTML = `<tr><td colspan="10" class="empty-state">Henuz veri yok.</td></tr>`;
+  if (!state.openLots.length) {
+    elements.positionsList.innerHTML = `<div class="empty-card">Henuz veri yok.</div>`;
     return;
   }
-  elements.positionsBody.innerHTML = state.positions
-    .map((position) => {
-      const pnlClass = position.unrealizedPnl == null ? "" : position.unrealizedPnl >= 0 ? "value-positive" : "value-negative";
-      const referenceLabel =
-        position.referencePrice != null
-          ? `${formatCurrency(position.referencePrice)} <span class="hint">(${position.priceMode})</span>`
-          : "-";
+
+  elements.positionsList.innerHTML = state.openLots
+    .map((lot) => {
+      const pnlClass =
+        lot.unrealizedPnl == null ? "" : lot.unrealizedPnl >= 0 ? "value-positive" : "value-negative";
+
       return `
-        <tr>
-          <td>${position.symbol}</td>
-          <td>${formatNumber(position.remainingShares)}</td>
-          <td>${formatCurrency(position.averageCost)}</td>
-          <td>${formatCurrency(position.remainingCost)}</td>
-          <td>${formatCurrency(position.totalFees)}</td>
-          <td>${referenceLabel}</td>
-          <td>${position.marketValue != null ? formatCurrency(position.marketValue) : "-"}</td>
-          <td class="${pnlClass}">${position.unrealizedPnl != null ? formatCurrency(position.unrealizedPnl) : "-"}</td>
-          <td>${position.breakEvenShares != null ? formatNumber(position.breakEvenShares) : "-"}</td>
-          <td>${position.freeSharesLeft != null ? formatNumber(position.freeSharesLeft) : "-"}</td>
-        </tr>
+        <article class="position-card">
+          <div class="position-top">
+            <div>
+              <div class="position-symbol">${lot.symbol}</div>
+              <div class="hint">${formatDate(lot.date)}${lot.note ? ` • ${lot.note}` : ""}</div>
+            </div>
+            <div class="position-right">
+              <strong>${formatNumber(lot.remainingShares)} adet</strong>
+              <span class="hint">${lot.priceMode === "canli" ? "canli fiyat" : "son islem fiyatı"}</span>
+            </div>
+          </div>
+          <div class="position-grid">
+            <div class="meta-cell">
+              <span>Ort. maliyet</span>
+              <strong>${formatCurrency(lot.averageCost)}</strong>
+            </div>
+            <div class="meta-cell">
+              <span>Acik maliyet</span>
+              <strong>${formatCurrency(lot.remainingCost)}</strong>
+            </div>
+            <div class="meta-cell">
+              <span>Referans fiyat</span>
+              <strong>${lot.referencePrice != null ? formatCurrency(lot.referencePrice) : "-"}</strong>
+            </div>
+            <div class="meta-cell">
+              <span>Deger</span>
+              <strong>${lot.marketValue != null ? formatCurrency(lot.marketValue) : "-"}</strong>
+            </div>
+            <div class="meta-cell">
+              <span>Gerceklesmemis K/Z</span>
+              <strong class="${pnlClass}">${lot.unrealizedPnl != null ? formatCurrency(lot.unrealizedPnl) : "-"}</strong>
+            </div>
+            <div class="meta-cell">
+              <span>Satman gereken adet</span>
+              <strong>${lot.breakEvenShares != null ? formatNumber(lot.breakEvenShares) : "-"}</strong>
+            </div>
+          </div>
+        </article>
       `;
     })
     .join("");
@@ -389,11 +470,14 @@ function renderPositions() {
 
 function renderLedger() {
   elements.transactionCountPill.textContent = `${state.transactions.length} islem`;
+
   if (!state.transactions.length) {
     elements.ledgerList.innerHTML = `<div class="empty-card">Henuz islem kaydi yok.</div>`;
     return;
   }
+
   const sorted = [...state.transactions].sort((a, b) => parseDate(b.date) - parseDate(a.date));
+
   elements.ledgerList.innerHTML = sorted
     .map((row) => {
       const side = row.pcs < 0 ? "sell" : "buy";
@@ -402,15 +486,27 @@ function renderLedger() {
           <div class="ledger-top">
             <div>
               <div class="ledger-symbol">${row.symbol}</div>
-              <div class="hint">${formatDate(row.date)}</div>
+              <div class="hint">${formatDate(row.date)}${row.note ? ` • ${row.note}` : ""}</div>
             </div>
             <span class="badge ${side}">${side === "buy" ? "Alis" : "Satis"}</span>
           </div>
           <div class="ledger-meta">
-            <div class="meta-cell"><span>Adet</span><strong>${formatNumber(Math.abs(row.pcs))}</strong></div>
-            <div class="meta-cell"><span>Fiyat</span><strong>${formatCurrency(row.price)}</strong></div>
-            <div class="meta-cell"><span>Komisyon</span><strong>${formatCurrency(Math.abs(row.fee || 0))}</strong></div>
-            <div class="meta-cell"><span>Tutar</span><strong>${formatCurrency(Math.abs(row.amount || row.pcs * row.price))}</strong></div>
+            <div class="meta-cell">
+              <span>Adet</span>
+              <strong>${formatNumber(Math.abs(row.pcs))}</strong>
+            </div>
+            <div class="meta-cell">
+              <span>Fiyat</span>
+              <strong>${formatCurrency(row.price)}</strong>
+            </div>
+            <div class="meta-cell">
+              <span>Komisyon</span>
+              <strong>${formatCurrency(Math.abs(row.fee || 0))}</strong>
+            </div>
+            <div class="meta-cell">
+              <span>Tutar</span>
+              <strong>${formatCurrency(Math.abs(row.amount || row.pcs * row.price))}</strong>
+            </div>
           </div>
         </article>
       `;
@@ -436,15 +532,25 @@ function parseDate(value) {
 }
 
 function formatDate(value) {
-  return new Intl.DateTimeFormat("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(value));
+  return new Intl.DateTimeFormat("tr-TR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(value));
 }
 
 function formatCurrency(value) {
-  return new Intl.NumberFormat("tr-TR", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value);
+  return new Intl.NumberFormat("tr-TR", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  }).format(value);
 }
 
 function formatNumber(value) {
-  return new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 2 }).format(value);
+  return new Intl.NumberFormat("tr-TR", {
+    maximumFractionDigits: 2,
+  }).format(value);
 }
 
 function round2(value) {
