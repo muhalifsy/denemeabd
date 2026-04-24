@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Northstar Portföy</title>
+    <title>Northstar Portfolio</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -11,41 +11,41 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script type="module" src="./app.js"></script>
   </head>
   <body>
     <div class="page-shell">
       <header class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">Northstar Portföy</p>
-          <h1>ABD hisselerini sade ama güçlü bir panelden yönet.</h1>
+          <p class="eyebrow">Northstar Portfolio</p>
+          <h1>ABD hisselerini tek panelde takip et.</h1>
           <p class="lead">
-            Midas işlemlerini tek yerde gör, yeni işlemleri hızlıca ekle, güncel
-            ve tarihsel fiyatları tek tuşla çek.
+            Excel dosyani yukle, pozisyonlarini otomatik hesapla, sonra yeni
+            islemler ekleyip fiyatlari tek tusla guncelle.
           </p>
           <div class="hero-actions">
             <button id="seed-image-data-button" class="primary">
-              Görseldeki Verileri Yükle
+              Baslangic Verisini Geri Yukle
             </button>
-            <button id="reset-data-button" class="ghost">Temiz Başla</button>
+            <button id="reset-data-button" class="ghost">Temiz Basla</button>
           </div>
         </div>
 
         <aside class="hero-aside">
           <div class="mini-card">
-            <span>Yayın modeli</span>
-            <strong>Aynı adres korunur</strong>
+            <span>Baslangic verisi</span>
+            <strong>Senin Excel kayitlarin yuklu</strong>
             <p>
-              Aynı projeyi tekrar yayınlayınca aynı sayfa güncellenir, link
-              değişmez.
+              Daha once girdigin islemler dogrudan uygulamaya yerlestirildi.
             </p>
           </div>
           <div class="mini-card">
-            <span>İşlem akışı</span>
-            <strong>Tarih + adet yeterli</strong>
+            <span>Yeni sutun</span>
+            <strong>Satman gereken adet</strong>
             <p>
-              Sembol ve tarih girince fiyat otomatik doldurulur. İstersen elle
-              düzeltirsin.
+              Son fiyata gore maliyet ve masrafi cikarmak icin kac adet
+              satman gerektigini gosterir.
             </p>
           </div>
         </aside>
@@ -55,10 +55,10 @@
         <section class="panel add-panel">
           <div class="panel-head">
             <div>
-              <p class="section-kicker">Yeni İşlem</p>
-              <h2>İşlem ekle</h2>
+              <p class="section-kicker">Yeni Islem</p>
+              <h2>Islem ekle</h2>
             </div>
-            <span class="pill">Elle düzeltilebilir</span>
+            <span class="pill">Elle duzeltilebilir</span>
           </div>
 
           <form id="transaction-form" class="form-grid">
@@ -68,10 +68,10 @@
             </label>
 
             <label class="field">
-              <span>İşlem tipi</span>
+              <span>Islem tipi</span>
               <select id="side-input" name="side">
-                <option value="buy">Alış</option>
-                <option value="sell">Satış</option>
+                <option value="buy">Alis</option>
+                <option value="sell">Satis</option>
               </select>
             </label>
 
@@ -125,20 +125,20 @@
                 type="number"
                 min="0"
                 step="0.01"
-                placeholder="Otomatik hesaplanır"
+                placeholder="Otomatik hesaplanir"
               />
             </label>
 
             <label class="field wide">
               <span>Not</span>
-              <input id="note-input" name="note" placeholder="İstersen not ekle" />
+              <input id="note-input" name="note" placeholder="Istersen not ekle" />
             </label>
 
             <div class="form-actions wide">
               <button type="button" id="autofill-button" class="ghost">
-                Tarihe Göre Otomatik Doldur
+                Tarihe Gore Otomatik Doldur
               </button>
-              <button type="submit" class="primary">İşlemi Ekle</button>
+              <button type="submit" class="primary">Islemi Ekle</button>
             </div>
           </form>
         </section>
@@ -146,8 +146,8 @@
         <section class="panel controls-panel">
           <div class="panel-head">
             <div>
-              <p class="section-kicker">Ayarlar</p>
-              <h2>Veri bağlantısı</h2>
+              <p class="section-kicker">Veri</p>
+              <h2>Fiyat baglantisi</h2>
             </div>
           </div>
 
@@ -156,13 +156,13 @@
             <input
               id="api-key-input"
               type="password"
-              placeholder="Fiyat verisi için gerekli"
+              placeholder="Fiyat verisi icin gerekli"
               autocomplete="off"
             />
           </label>
 
           <label class="field">
-            <span>Tahmini vergi oranı (%)</span>
+            <span>Tahmini vergi orani (%)</span>
             <input
               id="tax-rate-input"
               type="number"
@@ -177,15 +177,14 @@
           </div>
 
           <p class="hint">
-            Güncel fiyat için `quote`, tarihsel otomatik doldurma için `time_series`
-            kullanılıyor.
+            Son fiyat gelmezse hesaplar son islem fiyatina gore de gorunur.
           </p>
         </section>
       </main>
 
       <section class="panel status-panel">
         <div id="status-message" class="status-message info">
-          Görsel verisiyle başlayabilir veya yeni işlem ekleyebilirsin.
+          Excel dosyani yukleyebilir veya yeni islem ekleyebilirsin.
         </div>
       </section>
 
@@ -195,8 +194,8 @@
         <section class="panel positions-panel">
           <div class="panel-head">
             <div>
-              <p class="section-kicker">Portföy</p>
-              <h2>Açık pozisyonlar</h2>
+              <p class="section-kicker">Portfoy</p>
+              <h2>Acik pozisyonlar</h2>
             </div>
           </div>
 
@@ -207,18 +206,18 @@
                   <th>Sembol</th>
                   <th>Kalan Adet</th>
                   <th>Ort. Maliyet</th>
-                  <th>Açık Pozisyon Maliyeti</th>
+                  <th>Acik Pozisyon Maliyeti</th>
                   <th>Toplam Masraf</th>
-                  <th>Son Fiyat</th>
-                  <th>Güncel Değer</th>
-                  <th>Gerçekleşmemiş K/Z</th>
-                  <th>Maliyeti Çıkarmak İçin Satılacak Adet</th>
+                  <th>Referans Fiyat</th>
+                  <th>Guncel Deger</th>
+                  <th>Gerceklesmemis K/Z</th>
+                  <th>Masrafi Cikarmak Icin Satilacak Adet</th>
                   <th>Kalan Bedava Adet</th>
                 </tr>
               </thead>
               <tbody id="positions-body">
                 <tr>
-                  <td colspan="10" class="empty-state">Henüz veri yok.</td>
+                  <td colspan="10" class="empty-state">Henuz veri yok.</td>
                 </tr>
               </tbody>
             </table>
@@ -228,14 +227,14 @@
         <section class="panel ledger-panel">
           <div class="panel-head">
             <div>
-              <p class="section-kicker">İşlem Defteri</p>
-              <h2>Son işlemler</h2>
+              <p class="section-kicker">Islem Defteri</p>
+              <h2>Son islemler</h2>
             </div>
-            <span class="pill" id="transaction-count-pill">0 işlem</span>
+            <span class="pill" id="transaction-count-pill">0 islem</span>
           </div>
 
           <div class="ledger-list" id="ledger-list">
-            <div class="empty-card">Henüz işlem kaydı yok.</div>
+            <div class="empty-card">Henuz islem kaydi yok.</div>
           </div>
         </section>
       </section>
